@@ -1,6 +1,5 @@
-### Lex Comber July 2018
-## for Yi-Min
-## Aim for paper on FB gwr and scenicness
+### Yi-Min Chang Chien December 2019
+## Aim for paper on scenicness with MGWR
 ## RQ: how do different factors relate to scenicness and at what scales do they operate?
 
 ### Load data and libraries
@@ -34,18 +33,29 @@ sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
   as("Spatial")
 
 
-for (i in 1:(dim(sc)[1])) {
-  sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-}
+# for (i in 1:(dim(sc)[1])) {
+#   sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+#   sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+#   sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+#   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+# }
 
 
-GB <- getData("GADM", country = "United Kingdom", level = 0) %>% 
-  disaggregate %>%
-  geometry
+GB <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
+      subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
+      disaggregate %>%
+      geometry %>%
+      st_as_sf %>%
+      st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
 
+  
+      grid <- st_make_grid(target,
+                           50 * 1000,
+                           # Kms
+                           crs = st_crs(initial),
+                           what = "polygons",
+                           square = TRUE
+      )      
 # 2. urban rural
 #setwd("/Users/Yi-Min/R session/ScenicOrNot/predictor variables/Rural Urban Classification")
 #ru <- readOGR("RUC_LSOA.shp")
