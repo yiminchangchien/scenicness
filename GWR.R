@@ -1,10 +1,3 @@
-### Lex Comber July 2018
-## for Yi-Min
-## Aim for paper on FB gwr and scenicness
-## RQ: how do different factors relate to scenicness and at what scales do they operate?
-
-### Load data and libraries
-### set up data.sp etc
 library(raster)
 library(rgdal)
 library(rgeos)
@@ -20,6 +13,8 @@ library(GGally)
 library(landscapemetrics)
 library(reshape2)
 library(raster)
+library(readr)
+
 
 ##### 1
 ##### 1.1. load in Scenic-Or-Not dataset #####
@@ -27,24 +22,30 @@ bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000
         +ellps=airy +datum=OSGB36 +units=m +no_defs"
 wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
 
-sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
-  as.data.frame %>%
-  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
-  st_transform(crs=27700) %>%
-  as("Spatial")
-
+sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv", 
+               col_types = cols("ID" = col_number(),
+                                "Lat" = col_double(),
+                                "Lon" = col_double(),
+                                "Average" = col_double(),
+                                "Variance" = col_double(),
+                                "Votes" = col_character(),
+                                "Geograph URI" = col_character())) %>%
+      as.data.frame %>%
+      st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+      st_transform(crs=27700) %>%
+      as("Spatial")
 
 for (i in 1:(dim(sc)[1])) {
-  sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-  sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+  sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+  sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+  sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 }
 
 
-GB <- getData("GADM", country = "United Kingdom", level = 0) %>% 
-  disaggregate %>%
-  geometry
+GB <- raster::getData("GADM", country = "United Kingdom", level = 0) %>% 
+      disaggregate %>%
+      geometry
 
 
 
