@@ -59,12 +59,13 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
 #   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 # }
 
-GB <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
-  subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
-  disaggregate %>%
-  geometry %>%
-  st_as_sf %>%
-  st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
+grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
+        subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
+        disaggregate %>%
+        st_as_sf %>%
+        st_transform(crs = 27700) %>%
+        st_geometry %>%
+        st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
 
 
 grid <- st_make_grid(target,
