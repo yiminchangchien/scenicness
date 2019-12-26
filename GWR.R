@@ -22,16 +22,7 @@ library(GGally)
 library(landscapemetrics)
 library(reshape2)
 library(raster)
-<<<<<<< HEAD
-
-##### 1
-##### 1.1. load in Scenic-Or-Not dataset #####
-bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
-        +ellps=airy +datum=OSGB36 +units=m +no_defs"
-wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-=======
 library(readr)
-
 
 ##### 1
 ##### 1.1. load in Scenic-Or-Not dataset #####
@@ -59,72 +50,34 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
 #   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 # }
 
+
+
 grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
         subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
         disaggregate %>%
         st_as_sf %>%
         st_transform(crs = 27700) %>%
         st_geometry %>%
-        st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
+        st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE) %>%
+grid %>% as(.x,"Spatial") -> test 
+grid.sp <- as(grid, "Spatial")
+%>%
+  df <- over(grd, sc[,"Mean"], fn = median)
+names(df) <- "SCENIC"
+grd <- SpatialPolygonsDataFrame(grd, data = data.frame(grd, df))
 
 
-grid <- st_make_grid(target,
-                     50 * 1000,
-                     # Kms
-                     crs = st_crs(initial),
-                     what = "polygons",
-                     square = TRUE
-)      
-
-setwd("/Users/Yi-Min/R session/ScenicOrNot/NationalParks")
-clip <- readOGR("bbox.shp")
->>>>>>> 061ed6bffdd197757b75bb85c89e44ef95fc56a5
-
-sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
-  as.data.frame %>%
-  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
-  st_transform(crs=27700) %>%
-  as("Spatial")
 
 
-# for (i in 1:(dim(sc)[1])) {
-#   sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-#   sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-#   sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-#   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
-# }
 
-
-GB <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
-      subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
-      disaggregate %>%
-      geometry %>%
-      st_as_sf %>%
-      st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
-
-  
-      grid <- st_make_grid(target,
-                           50 * 1000,
-                           # Kms
-                           crs = st_crs(initial),
-                           what = "polygons",
-                           square = TRUE
-      )      
-# 2. urban rural
-#setwd("/Users/Yi-Min/R session/ScenicOrNot/predictor variables/Rural Urban Classification")
-#ru <- readOGR("RUC_LSOA.shp")
-#ru <- spTransform(ru, proj)
-#ol <- over(sc, ru)
-#table(ol$RUC11, ol$RUC11CD)
-#u <- (ol$RUC11CD == "A1" | ol$RUC11CD == "B1" | ol$RUC11CD == "C1" | ol$RUC11CD == "C2") + 0
-#summary(u)
-#sc <- SpatialPointsDataFrame(sc, data = data.frame(sc, u), proj4string = proj)
-#names(sc@data)
-#sc <- sc[, -c(19:21)]
-#names(sc)[19] <- "Urban"
-### we are leaving this out
-## there are problems with the GWR because in many places it all rural
-## this messes with the local regression
+grid <- grid %>% mutate(Sce = over(., sc[,"Average"], fn = median)) %>% 
+                 mutate(Abs = raster::extract(Abs, grid, fun = median, na.rm = TRUE),
+                        Nat = raster::extract(Nat, grid, fun = median, na.rm = TRUE),
+                        Rem = raster::extract(Rem, grid, fun = median, na.rm = TRUE),
+                        Rug = raster::extract(Rug, grid, fun = median, na.rm = TRUE))
+primates_meso %>%
+  st_set_geometry(NULL) %>%
+  knitr::kable()
 
 # 3. wildness attributes
 setwd("/Users/Yi-Min/R session/ScenicOrNot/predictor variables/Wilderness Dimensions")
