@@ -1,9 +1,12 @@
+<<<<<<< HEAD
 ### Yi-Min Chang Chien December 2019
 ## Aim for paper on scenicness with MGWR
 ## RQ: how do different factors relate to scenicness and at what scales do they operate?
 
 ### Load data and libraries
 ### set up data.sp etc
+=======
+>>>>>>> 061ed6bffdd197757b75bb85c89e44ef95fc56a5
 library(raster)
 library(rgdal)
 library(rgeos)
@@ -19,12 +22,62 @@ library(GGally)
 library(landscapemetrics)
 library(reshape2)
 library(raster)
+<<<<<<< HEAD
 
 ##### 1
 ##### 1.1. load in Scenic-Or-Not dataset #####
 bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
         +ellps=airy +datum=OSGB36 +units=m +no_defs"
 wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+=======
+library(readr)
+
+
+##### 1
+##### 1.1. load in Scenic-Or-Not dataset #####
+bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
+        +ellps=airy +datum=OSGB36 +units=m +no_defs"
+wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+
+sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv", 
+               col_types = cols("ID" = col_number(),
+                                "Lat" = col_double(),
+                                "Lon" = col_double(),
+                                "Average" = col_double(),
+                                "Variance" = col_double(),
+                                "Votes" = col_character(),
+                                "Geograph URI" = col_character())) %>%
+      as.data.frame %>%
+      st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+      st_transform(crs=27700) %>%
+      as("Spatial")
+
+# for (i in 1:(dim(sc)[1])) {
+#   sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+#   sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+#   sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+#   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
+# }
+
+GB <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
+  subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
+  disaggregate %>%
+  geometry %>%
+  st_as_sf %>%
+  st_make_grid(cellsize = c(1000000,1000000), crs = 27700, what = "polygons", square = FALSE)
+
+
+grid <- st_make_grid(target,
+                     50 * 1000,
+                     # Kms
+                     crs = st_crs(initial),
+                     what = "polygons",
+                     square = TRUE
+)      
+
+setwd("/Users/Yi-Min/R session/ScenicOrNot/NationalParks")
+clip <- readOGR("bbox.shp")
+>>>>>>> 061ed6bffdd197757b75bb85c89e44ef95fc56a5
 
 sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
   as.data.frame %>%
