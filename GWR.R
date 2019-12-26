@@ -21,23 +21,30 @@ library(landscapemetrics)
 library(reshape2)
 library(raster)
 
-####### PART 1: load and peprpare data 
-# load data
-# Clip data - a bounding box to define the study area
-
+##### 1
 ##### 1.1. load in Scenic-Or-Not dataset #####
 bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
         +ellps=airy +datum=OSGB36 +units=m +no_defs"
 wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
 
-setwd("/Users/Yi-Min/Rsession/ScenicOrNot/ScenicOrNot dataset/")
-"ScenicOrNot_Geograph.csv" %>% read.csv() %>%
-  drop_na(wgs84_long, viewpoint_northings) %>%
-  #drop_na(viewpoint_eastings, viewpoint_northings) %>%
-  st_as_sf(coords = c("wgs84_long", "wgs84_lat"), remove=F, crs=wgs84) %>%
-  st_transform(crs=bng) %>% 
-  as("Spatial") -> sc
+sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
+  as.data.frame %>%
+  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+  st_transform(crs=27700) %>%
+  as("Spatial")
 
+
+for (i in 1:(dim(sc)[1])) {
+  sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+}
+
+
+GB <- getData("GADM", country = "United Kingdom", level = 0) %>% 
+  disaggregate %>%
+  geometry
 
 
 
