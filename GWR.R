@@ -5,68 +5,46 @@
 
 ### Load data and libraries
 ### set up data.sp etc
-library(GISTools)
 library(raster)
 library(rgdal)
-library(spdep)
+library(rgeos)
+library(tidyr)
+library(spatstat)
+library(maptools)
 library(GWmodel)
-library(tidyverse)
-library(tmap)
 library(MASS)
-library(nlme)
-library(gclus)
-library(reshape2)
-library(knitr)
+library(sp)
+library(sf)
 library(ggplot2)
+library(GGally)
+library(landscapemetrics)
+library(reshape2)
+library(raster)
 
-####### PART 1: load and peprpare data 
-# load data
-# Clip data - a bounding box to define the study area
-setwd("/Users/Yi-Min/R session/ScenicOrNot/NationalParks")
-clip <- readOGR("bbox.shp")
+##### 1
+##### 1.1. load in Scenic-Or-Not dataset #####
+bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
+        +ellps=airy +datum=OSGB36 +units=m +no_defs"
+wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
 
-# Sc or Not
-setwd("/Users/Yi-Min/R session/ScenicOrNot/ScenicOrNot dataset")
-sc <- readOGR("ScenicOrNot_Wales.shp")
-names(sc)
-sc <- sc[,1:9]
+sc <- readr::read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv") %>%
+  as.data.frame %>%
+  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+  st_transform(crs=27700) %>%
+  as("Spatial")
 
-# lcm
-setwd("/Users/Yi-Min/R session/ScenicOrNot/predictor variables/CEH Land Cover Map")
-lc <- readGDAL("LCM2015_GB_1km_percent_cover_aggregate_class.tif")
-class(lc)
-class(sc)
-summary(lc)
-summary(sc)
-# align porjections and transform sc to lc proj
-proj <- CRS(proj4string(lc))
-sc <- spTransform(sc, proj)
-clip <- spTransform(clip, proj)
-plot(clip)
-plot(sc, add = T)
 
-# clip out data
-sc <- sc[clip, ]
-lc <- lc[clip, ]
-plot(sc)
+for (i in 1:(dim(sc)[1])) {
+  sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$Mean[[i]] <- mean(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+  sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ";")[[1]]))
+}
 
-# do overlays
 
-# 1. land cover
-ol <- over(sc, lc)
-dim(ol)
-dim(sc)
-head(ol)
-class(ol)
-# join the results
-sc <- SpatialPointsDataFrame(sc, data = data.frame(sc, ol), proj4string = proj)
-head(sc@data)
-names(sc)
-sc <- sc[,-c(10:12, 22)] # At the beginning, the variable of LCM10 was included; however, it is discarded here.
-# convert to proportions
-temp <- sc@data[, 10:18]/100
-sc@data[, 10:18] <- temp
-names(sc)[10:18] <- paste0("LCM", 1:9)
+GB <- getData("GADM", country = "United Kingdom", level = 0) %>% 
+  disaggregate %>%
+  geometry
 
 # 2. urban rural
 #setwd("/Users/Yi-Min/R session/ScenicOrNot/predictor variables/Rural Urban Classification")
