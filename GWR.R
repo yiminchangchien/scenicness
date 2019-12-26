@@ -5,23 +5,42 @@
 
 ### Load data and libraries
 ### set up data.sp etc
-library(GISTools)
 library(raster)
 library(rgdal)
-library(spdep)
+library(rgeos)
+library(tidyr)
+library(spatstat)
+library(maptools)
 library(GWmodel)
-library(tidyverse)
-library(tmap)
 library(MASS)
-library(nlme)
-library(gclus)
-library(reshape2)
-library(knitr)
+library(sp)
+library(sf)
 library(ggplot2)
+library(GGally)
+library(landscapemetrics)
+library(reshape2)
+library(raster)
 
 ####### PART 1: load and peprpare data 
 # load data
 # Clip data - a bounding box to define the study area
+
+##### 1.1. load in Scenic-Or-Not dataset #####
+bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
+        +ellps=airy +datum=OSGB36 +units=m +no_defs"
+wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/ScenicOrNot dataset/")
+"ScenicOrNot_Geograph.csv" %>% read.csv() %>%
+  drop_na(wgs84_long, viewpoint_northings) %>%
+  #drop_na(viewpoint_eastings, viewpoint_northings) %>%
+  st_as_sf(coords = c("wgs84_long", "wgs84_lat"), remove=F, crs=wgs84) %>%
+  st_transform(crs=bng) %>% 
+  as("Spatial") -> sc
+
+
+
+
 setwd("/Users/Yi-Min/R session/ScenicOrNot/NationalParks")
 clip <- readOGR("bbox.shp")
 
