@@ -105,7 +105,7 @@ grid.sp@data[,c(1,2:5)] %>% mutate_all(scale) %>%
 # between scenicness and other variables
 # That is how these vary spatially / locally
 
-reg.mod <- as.formula(scale(Sce) ~ scale(Abs) + scale(Nat) + scale(Rem) + scale(Rug))
+reg.mod <- as.formula(Sce ~ scale(Abs) + scale(Nat) + scale(Rem) + scale(Rug))
 reg.mod <- as.formula(Sce ~ Abs + Nat + Rem + Rug)
 
 # 3.1. Linear Regression
@@ -122,7 +122,7 @@ reg.mod2 <- as.formula(summary(stepAIC(ols.m, trace = 0))[1])
 
 # 3.1.2. examine the residual of the global model
 s.resids = rstandard(ols.m) # to compute some of the regression (leave-one-out deletion) diagnostics for linear and generalized linear models discussed in Belsley, Kuh and Welsch (1980), Cook and Weisberg (1982)
-resid.shades = shading(c(-2,2),c("red","grey","blue"))
+resid.shades = shading(c(-2,2),c("red","grey","blue")) # red: overestimation; blue: underestimation
 cols = resid.shades$cols[1 + findInterval(s.resids, resid.shades$breaks)]
 plot(ols.m, col = cols)
 abline(lm(reg.mod), col='red', lwd = 2, lty = 2)
@@ -137,11 +137,12 @@ choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Resi
 #par(mar=c(5,4,4,2))
 #dev.off()
            
- outlier_over <- which(rstandard(ols.m) > 2) 
-outlier_under <- which(rstandard(ols.m) < -2) 
-grid.sp[row.names(grid.sp) %in% names(outlier_under), ] %>% over(sc) %>%
+ outlier_under <- which(rstandard(ols.m) > 2) 
+outlier_over <- which(rstandard(ols.m) < -2) 
+
+grid.sp[row.names(grid.sp) %in% names(outlier_over), ] %>% over(sc) %>%
   select("Geograph.URI") -> urls
-setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/under-estimation")
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/overestimate")
 download.img <- function(url){
   require(jpeg)
   require(rvest)
@@ -155,7 +156,12 @@ download.img <- function(url){
 }
 apply(urls, 1, download.img)
 
-overestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_under), ]
+underestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_under), ]
+underestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(underestimate))]
+
+overestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_over), ]
+overestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(overestimate))]
+
 
 
 # 3.2. Spatial Autocorrelation
