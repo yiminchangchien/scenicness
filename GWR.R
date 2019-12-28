@@ -10,6 +10,7 @@ library(rgeos)
 library(tidyr)
 library(spatstat)
 library(maptools)
+library(GISTools)
 library(GWmodel)
 library(MASS)
 library(sp)
@@ -20,6 +21,7 @@ library(landscapemetrics)
 library(reshape2)
 library(raster)
 library(readr)
+library(spatialEco)
 
 ##### 1
 ##### 1.1. load in Scenic-Or-Not dataset #####
@@ -47,8 +49,6 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
 #   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 # }
 
-
-
 grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
         subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
         disaggregate %>%
@@ -57,8 +57,6 @@ grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>%
         st_geometry %>%
         st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE)
 grid.sp <- as(grid, "Spatial")
-
-
 
 setwd("/Users/Yi-Min/Rsession/ScenicOrNot/predictor variables/Wilderness Dimensions")
 wildness <- list("access","naturalness","remoteness","ruggedness") %>% lapply(raster)
@@ -82,7 +80,6 @@ grid.sp$Nat <- raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE) %>% as.
 grid.sp$Rem <- raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 grid.sp$Rug <- raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 
-
 test <- grid.sp@data %>% as_tibble %>% 
                                  mutate(Sce = over(grid.sp, sc[,"Average"], fn = median)) %>% 
                                  mutate('Abs' = raster::extract(Abs, grid.sp, fun = median, na.rm = TRUE),
@@ -92,19 +89,10 @@ test <- grid.sp@data %>% as_tibble %>%
 
 ####### END PART 1: load and peprpare data 
 
-
 ####### PART 2: initial analysis
 # correlations and covariance of variables
 grid.sp@data[,c(1,2:5)] %>% mutate_all(scale) %>% 
                             plot(cex = 0.5, col = grey(0.145,alpha=0.5), upper.panel=panel.smooth)
-
-# with gclus
-# Catherine Hurley’s gclus package. This is similar to the data frame plotting, 
-# but provides tools to reorder the variables so that the most strongly correlated pairs 
-# are closer to the diagonal in the plots. It can also colour-code the plots to show 
-# whether the correlations are positive (red) negative (blue) or near to zero (yellow). 
-# For this plot we focus on the predictors again. This is shown below
-
 # covariance
 ## get some plots out, gets some table etc
 
@@ -121,7 +109,7 @@ reg.mod <- as.formula(scale(Sce) ~ scale(Abs) + scale(Nat) + scale(Rem) + scale(
 reg.mod <- as.formula(Sce ~ Abs + Nat + Rem + Rug)
 
 # 3.1. Linear Regression
-require(spatialEco)
+
 ols.m <- grid.sp %>% sp.na.omit(margin = 1) %>%
                      lm(reg.mod, data = .)
 summary(ols.m)
@@ -134,7 +122,6 @@ reg.mod2 <- as.formula(summary(stepAIC(ols.m, trace = 0))[1])
 
 # 3.1.2. examine the residual of the global model
 s.resids = rstandard(ols.m) # to compute some of the regression (leave-one-out deletion) diagnostics for linear and generalized linear models discussed in Belsley, Kuh and Welsch (1980), Cook and Weisberg (1982)
-require(GISTools)
 resid.shades = shading(c(-2,2),c("red","grey","blue"))
 cols = resid.shades$cols[1 + findInterval(s.resids, resid.shades$breaks)]
 plot(ols.m, col = cols)
@@ -145,9 +132,31 @@ abline(lm(reg.mod), col='red', lwd = 2, lty = 2)
 grid.sp %>% sp.na.omit(margin = 1) %>%
             choropleth(s.resids, shading = resid.shades)
 choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Residuals Map')
+
 # reset the plot margins
 #par(mar=c(5,4,4,2))
 #dev.off()
+           
+ outlier_over <- which(rstandard(ols.m) > 2) 
+outlier_under <- which(rstandard(ols.m) < -2) 
+grid.sp[row.names(grid.sp) %in% names(outlier_under), ] %>% over(sc) %>%
+  select("Geograph.URI") -> urls
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/under-estimation")
+download.img <- function(url){
+  require(jpeg)
+  require(rvest)
+  require(dplyr)
+  id <- gsub("http://www.geograph.org.uk/photo/", "", url)
+  url %>% html_session %>%
+          html_nodes("img") %>%
+          .[1] %>%
+          html_attr("src") %>%
+          download.file(paste0(id,".jpg"), mode = "wb")
+}
+apply(urls, 1, download.img)
+
+overestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_under), ]
+
 
 # 3.2. Spatial Autocorrelation
 # 3.2.1. Global Moran's I for OLS regression residuals
@@ -188,8 +197,21 @@ do.call("grid.arrange", c(plots, ncol=5))
 # 3.3.2. Multiscale GWR
 mgwr.m <- grid.sp %>% sp.na.omit(margin = 1) %>%
                       gwr.multiscale(reg.mod, data = ., kernel = "bisquare", adaptive = F, 
-                                     criterion = "dCVR", max.iterations = 200, threshold=0.00001, 
-                                     bws0=rep(bw, length=4), predictor.centered=rep(TRUE, length=4))
+                                     criterion = "dCVR", threshold=0.00001, bws0=rep(bw, length=4), 
+                                     predictor.centered=rep(TRUE, length=4))
+
+names(mgwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
+
+plots <- grid.sp %>% sp.na.omit(margin = 1) %>%
+                     names %>%
+                     lapply(function(.x) spplot(sp.na.omit(grid.sp, margin = 1), .x, main = .x, col = NA))
+require(gridExtra)
+do.call("grid.arrange", c(plots, ncol=5))
+
+plots = lapply(names(mgwr.m$SDF)[1:5], function(.x) spplot(mgwr.m$SDF, .x, main = .x, col = NA))
+require(gridExtra)
+do.call("grid.arrange", c(plots, ncol=5))
+spplot(mgwr.m$SDF, zcol= "residual", col=NA)
 
 ####### END PART 3: Regression - Global and Local Model
 
