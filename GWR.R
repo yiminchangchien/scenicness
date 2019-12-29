@@ -29,18 +29,19 @@ bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000
         +ellps=airy +datum=OSGB36 +units=m +no_defs"
 wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
 
-sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv", 
-               col_types = cols("ID" = col_number(),
-                                "Lat" = col_double(),
-                                "Lon" = col_double(),
-                                "Average" = col_double(),
-                                "Variance" = col_double(),
-                                "Votes" = col_character(),
-                                "Geograph URI" = col_character())) %>%
-        as.data.frame %>%
-        st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
-        st_transform(crs=27700) %>%
-        as("Spatial")
+sc <- 
+  read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
+           col_types = cols("ID" = col_number(),
+                            "Lat" = col_double(),
+                            "Lon" = col_double(),
+                            "Average" = col_double(),
+                            "Variance" = col_double(),
+                            "Votes" = col_character(),
+                            "Geograph URI" = col_character())) %>%
+  as.data.frame %>%
+  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+  st_transform(crs=27700) %>%
+  as("Spatial")
 
 # for (i in 1:(dim(sc)[1])) {
 #   sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
@@ -49,13 +50,15 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
 #   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 # }
 
-grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
-          subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
-          disaggregate %>%
-          st_as_sf %>%
-          st_transform(crs = 27700) %>%
-          st_geometry %>%
-          st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE)
+grid <- 
+  raster::getData("GADM", country = "United Kingdom", level = 1) %>%
+  subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
+  disaggregate() %>%
+  st_as_sf() %>%
+  st_transform(crs = 27700) %>%
+  st_geometry() %>%
+  st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE)
+
 grid.sp <- as(grid, "Spatial")
 
 setwd("/Users/Yi-Min/Rsession/ScenicOrNot/predictor variables/Wilderness Dimensions")
@@ -68,9 +71,7 @@ test <- lapply(list, raster)
  "ruggedness" %>% raster -> Rug
  
 GB.sp <- as(GB, "Spatial") %>% spTransform(crs(Abs))
-
-
- Abs[mask(is.na(Abs), gBuffer(GB.sp, byid=T, width=-100))] <- 19.125
+Abs[mask(is.na(Abs), gBuffer(GB.sp, byid=T, width=-100))] <- 19.125
 
 require(dplyr)
 grid.sp <- as(grid.sp, "SpatialPolygonsDataFrame")
@@ -80,22 +81,23 @@ grid.sp$Nat <- raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE) %>% as.
 grid.sp$Rem <- raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 grid.sp$Rug <- raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 
-test <- grid.sp@data %>% 
-          as_tibble %>% 
-          mutate(Sce = over(grid.sp, sc[,"Average"], fn = median)) %>% 
-          mutate(
-            'Abs' = raster::extract(Abs, grid.sp, fun = median, na.rm = TRUE),
-            'Nat' = raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE),
-            'Rem' = raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE),
-            'Rug' = raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE)
-          )
+test <- 
+  grid.sp@data %>%
+  as_tibble %>%
+  mutate(Sce = over(grid.sp, sc[,"Average"], fn = median)) %>% 
+  mutate('Abs' = raster::extract(Abs, grid.sp, fun = median, na.rm = TRUE),
+         'Nat' = raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE),
+         'Rem' = raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE),
+         'Rug' = raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE))
 
 ####### END PART 1: load and peprpare data 
 
 ####### PART 2: initial analysis
 # correlations and covariance of variables
-grid.sp@data[,c(1,2:5)] %>% mutate_all(scale) %>% 
-                            plot(cex = 0.5, col = grey(0.145,alpha=0.5), upper.panel=panel.smooth)
+grid.sp@data[,c(1,2:5)] %>% 
+  mutate_all(scale) %>%
+  plot(cex = 0.5, col = grey(0.145, alpha=0.5), upper.panel=panel.smooth)
+
 # covariance
 ## get some plots out, gets some table etc
 
@@ -109,12 +111,14 @@ grid.sp@data[,c(1,2:5)] %>% mutate_all(scale) %>%
 # That is how these vary spatially / locally
 
 reg.mod <- as.formula(Sce ~ scale(Abs) + scale(Nat) + scale(Rem) + scale(Rug))
-reg.mod <- as.formula(Sce ~ Abs + Nat + Rem + Rug)
+reg.mod <- as.formula(Sce ~ scale(Abs) + scale(Nat) + scale(Rug))
 
 # 3.1. Linear Regression
+ols.m <- 
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  lm(reg.mod, data = .)
 
-ols.m <- grid.sp %>% sp.na.omit(margin = 1) %>%
-                     lm(reg.mod, data = .)
 summary(ols.m)
 round(coef(summary(ols.m)), 3)
 
@@ -123,7 +127,7 @@ summary(stepAIC(ols.m, trace = 0))
 round(coef(summary(stepAIC(ols.m, trace = 0))), 3)
 reg.mod2 <- as.formula(summary(stepAIC(ols.m, trace = 0))[1])
 
-# 3.1.2. examine the residual of the global model
+###### 3.1.2. examine the residual of the global model
 s.resids = rstandard(ols.m) # to compute some of the regression (leave-one-out deletion) diagnostics for linear and generalized linear models discussed in Belsley, Kuh and Welsch (1980), Cook and Weisberg (1982)
 resid.shades = shading(c(-2,2),c("red","grey","blue")) # red: overestimation; blue: underestimation
 cols = resid.shades$cols[1 + findInterval(s.resids, resid.shades$breaks)]
@@ -137,6 +141,38 @@ grid.sp %>%
   choropleth(s.resids, shading = resid.shades)
 choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Residuals Map')
 
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  st_as_sf() %>%
+  mutate(Residuals = ols.m$residuals) %>%
+  select(Residuals) ->
+  hex.res
+
+  ggplot(data = hex.res) +
+  geom_sf(aes(fill = Residuals)) +
+  scale_fill_viridis_c(option = "plasma", trans = "sqrt")
+
+require(classInt)
+# get quantile breaks. Add .00001 offset to catch the lowest value
+breaks_qt <- classIntervals(c(min(hex.res$Residuals) - .00001, hex.res$Residuals), n = 9, style = "quantile")
+breaks_qt
+hex.res %>% 
+  mutate(res_cat = cut(Residuals, breaks_qt$brks)) %>%
+  ggplot(.) + 
+  geom_sf(aes(fill=res_cat), colour = NA) +
+  scale_fill_brewer(palette = "RdBu") +
+  theme(panel.grid.major = element_line(colour = 'transparent'),
+        axis.title.x=element_blank(), 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), 
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank())  
+
 # reset the plot margins
 #par(mar=c(5,4,4,2))
 #dev.off()
@@ -144,10 +180,33 @@ choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Resi
 outlier_under <- which(rstandard(ols.m) > 2) 
  outlier_over <- which(rstandard(ols.m) < -2) 
 
-urls <- grid.sp[row.names(grid.sp) %in% names(outlier_over), ] %>%
-          over(sc, .) %>% 
-          select("Geograph.URI")
-setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/overestimate")
+###### 3.1.3. incorporate the Geograph metadata and images for the outliers
+sc <-
+   read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
+            col_types = cols("ID" = col_number(),
+                             "Lat" = col_double(),
+                             "Lon" = col_double(),
+                             "Average" = col_double(),
+                             "Variance" = col_double(),
+                             "Votes" = col_character(),
+                             "Geograph URI" = col_character())) %>%
+   as.data.frame %>%
+   st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+   st_transform(crs=27700) %>%
+   as("Spatial")
+
+Geograph <- function(url, pts) {
+  pts <-
+    url %>% url() %>%
+    gzcon() %>%
+    readLines() %>%
+    textConnection() %>%
+    read.csv(sep = "\t") %>%
+    as.data.frame() %>%
+    left_join(pts, ., by = "gridimage_id")
+  return(pts)
+}
+
 download.img <- function(url) {
   require(jpeg)
   require(rvest)
@@ -161,99 +220,154 @@ download.img <- function(url) {
     download.file(paste0(id,".jpg"), mode = "wb")
 }
 
+require(dplyr)
+overestimation <-
+  grid.sp %>%
+  st_as_sf() %>%
+  mutate(HexID = row.names(.)) %>%
+  filter(HexID %in% names(outlier_over)) %>%
+  left_join(data.frame(ols.m$fitted.values, HexID = names(ols.m$fitted.values), stringsAsFactors=FALSE)) %>%
+  st_intersection(st_as_sf(sc[,c("Average","Votes","Geograph.URI")])) %>%
+  mutate(gridimage_id = as.integer(gsub("http://www.geograph.org.uk/photo/", "", Geograph.URI))) %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_base.tsv.gz", .) %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_text.tsv.gz", .) %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_geo.tsv.gz", .)
+
+
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/overestimate")
+require(foreach)
+urls <-
+  overestimation %>%
+  select(URI = Geograph.URI) %>%
+  st_drop_geometry()
+
 for (url in urls[,1]) {
   tryCatch(download.img(url),
            error = function(e) print(paste(url, 'did not work out')))    
 }
 
-#apply(urls, 1, download.img)
+# cl <- parallel::makeCluster(2)
+# doParallel::registerDoParallel(cl)
+# tryCatch(download.img(urls), error = function(e) print(e))
+# foreach(i = nrow(urls)) %do% tryCatch(download.img(urls[i,]), error = function(e) print(past(n, 'did not work out')))
 
-underestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_under), ]
-underestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(underestimate))]
+# spplot(sc[underestimate,'Average'], pch=19, cex=0.1,
+#       sp.layout = list(underestimate[, 'Sce'], zcol=c("Sce"), first = FALSE)) 
 
-spplot(sc[underestimate,'Average'], pch=19, cex=0.1,
-       sp.layout = list(underestimate[, 'Sce'], zcol=c("Sce"), first = FALSE)) 
+###### 3.1.4.
+temp <- tempfile()
+temp2 <- tempfile()
+download.file("https://inspire.nationalparks.uk/geoserver/ldnpa_inspire/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=ldnpa_inspire:LDNPA_Boundary&outputFormat=shape-zip", temp)
+unzip(zipfile = temp, exdir = temp2)
+np <- st_read(file.path(temp2, "LDNPA_Boundary.shp"))
+rm(list = c("temp", "temp2"))
 
-require(dplyr)
-underestimate@data <- tibble::rownames_to_column(underestimate@data, "HexID")
+underestimation[np,] %>%
+  filter(ols.m.fitted.values < Average) %>%
+  select(URI = Geograph.URI) %>%
+  st_drop_geometry() ->
+  urls
 
-underestimate %>%
-  st_as_sf() %>%
-  st_intersection(st_as_sf(sc[,c("Average","Votes","Geograph.URI")])) %>%
-  mutate(gridimage_id = as.integer(gsub("http://www.geograph.org.uk/photo/", "", Geograph.URI))) ->
-  underestimation
-
-sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv", 
-               col_types = cols("ID" = col_number(),
-                                "Lat" = col_double(),
-                                "Lon" = col_double(),
-                                "Average" = col_double(),
-                                "Variance" = col_double(),
-                                "Votes" = col_character(),
-                                "Geograph URI" = col_character())) %>%
-  as.data.frame %>%
-  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
-  st_transform(crs=27700) %>%
-  as("Spatial")
-
-Geograph <- function(url, pts) {
-  url %>% url() %>%
-    gzcon() %>%
-    readLines() %>%
-    textConnection() %>%
-    read.csv(sep = "\t") %>%
-    as.data.frame() %>%
-    left_join(pts, ., by = "gridimage_id") ->
-    pts
-  return(pts)
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/underestimate/Lake District")
+for (url in urls[,1]) {
+  tryCatch(download.img(url),
+           error = function(e) print(paste(url, 'did not work out')))    
 }
-underestimation %>%
-  Geograph("http://data.geograph.org.uk/dumps/gridimage_base.tsv.gz", .) %>%
-  Geograph("http://data.geograph.org.uk/dumps/gridimage_text.tsv.gz", .) %>%
-  Geograph("http://data.geograph.org.uk/dumps/gridimage_geo.tsv.gz", .) ->
-  underestimation
 
 
-overestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_over), ]
-overestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(overestimate))]
+underestimation[np,] %>%
+  filter(ols.m.fitted.values < Average) %>%
+#  filter(HexID == "ID1766") %>%
+  select(HexID) %>%
+  st_drop_geometry() %>%
+  unique()
 
 
-
-# 3.2. Spatial Autocorrelation
-# 3.2.1. Global Moran's I for OLS regression residuals
+##### 3.2. Spatial Autocorrelation
+###### 3.2.1. Global Moran's I for OLS regression residuals
 require(spdep) 
-lw <- grid.sp %>% sp.na.omit(margin = 1) %>%
-                  coordinates %>% 
-                  knearneigh(k = 6) %>%
-                  knn2nb %>%
-                  nb2listw
-moran  <- lm.morantest(ols.m, lw)
-print(moran)
+grid.sp %>% sp.na.omit(margin = 1) %>%
+  coordinates %>% 
+  knearneigh(k = 6) %>%
+  knn2nb %>%
+  nb2listw %>%
+  lm.morantest(ols.m, .) %>%
+  print()
 
 # 3.2.2. Collinearity 
 
 
 # 3.3. Local Model: 
 # 3.3.1. standard GWR
-dMat <- grid.sp %>% sp.na.omit(margin = 1) %>% 
-                    coordinates %>%
-                    gw.dist 
+dMat <-
+  grid.sp %>% sp.na.omit(margin = 1) %>% 
+  coordinates() %>%
+  gw.dist()
+
 # Bandwidth selection
-bw <- grid.sp %>% sp.na.omit(margin = 1) %>%
-                  bw.gwr(reg.mod, data = ., kernel = "bisquare", adaptive = F, approach = "CV", dMat = dMat) 
+bw <-
+  grid.sp %>% sp.na.omit(margin = 1) %>%
+  bw.gwr(reg.mod, data = ., 
+         kernel = "bisquare", 
+         adaptive = F, 
+         approach = "CV", 
+         dMat = dMat)
+
 # Fitting a GWR model
-gwr.m <- grid.sp %>% sp.na.omit(margin = 1) %>% 
-                     gwr.basic(reg.mod, data = ., bw = bw, kernel = "bisquare", adaptive = F, dMat = dMat)
+gwr.m <- 
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  gwr.basic(reg.mod, data = ., bw = bw, kernel = "bisquare", adaptive = F, dMat = dMat)
 gwr.m
 summary(gwr.m$SDF)
-spplot(grid.sp, zco="Sce", col=NA)
-require(stringr)
-names(gwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
-spplot(gwr.m$SDF, zcol= names(gwr.m$SDF)[1:5], col=NA)
 
-plots = lapply(names(gwr.m$SDF)[1:5], function(.x) spplot(gwr.m$SDF, .x, main = .x, col = NA))
-require(gridExtra)
-do.call("grid.arrange", c(plots, ncol=5))
+require(ggplot2)  
+gwr.m$SDF %>%
+  st_as_sf() %>%
+  ggplot(.) + 
+  geom_sf(aes(fill=residual), colour = NA) +
+  scale_fill_gradient2(low = "#B2182B",
+                       mid = "white",
+                       high = "#2166AC",
+                       midpoint = 0) +
+  theme(panel.grid.major = element_line(colour = 'transparent'),
+        axis.title.x=element_blank(), 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), 
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank())  
+
+gwr.m$SDF %>%
+  st_as_sf() %>%
+  ggplot(.) + 
+  geom_sf(aes(fill=Local_R2), colour = NA) +
+  scale_fill_viridis() +
+  theme(panel.grid.major = element_line(colour = 'transparent'),
+        axis.title.x=element_blank(), 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), 
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank())  
+
+
+
+# spplot(grid.sp, zco="Sce", col=NA)
+# require(stringr)
+# names(gwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
+# spplot(gwr.m$SDF, zcol= names(gwr.m$SDF)[1:5], col=NA)
+# plots = lapply(names(gwr.m$SDF)[1:5], function(.x) spplot(gwr.m$SDF, .x, main = .x, col = NA))
+# require(gridExtra)
+# do.call("grid.arrange", c(plots, ncol=5))
 
 # 3.3.2. Multiscale GWR
 mgwr.m <- grid.sp %>% sp.na.omit(margin = 1) %>%
