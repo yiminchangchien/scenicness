@@ -37,10 +37,10 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
                                 "Variance" = col_double(),
                                 "Votes" = col_character(),
                                 "Geograph URI" = col_character())) %>%
-      as.data.frame %>%
-      st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
-      st_transform(crs=27700) %>%
-      as("Spatial")
+        as.data.frame %>%
+        st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+        st_transform(crs=27700) %>%
+        as("Spatial")
 
 # for (i in 1:(dim(sc)[1])) {
 #   sc$Median[[i]] <- median(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
@@ -50,12 +50,12 @@ sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
 # }
 
 grid <- raster::getData("GADM", country = "United Kingdom", level = 1) %>% 
-        subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
-        disaggregate %>%
-        st_as_sf %>%
-        st_transform(crs = 27700) %>%
-        st_geometry %>%
-        st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE)
+          subset(NAME_1 %in% c('England', 'Scotland','Wales')) %>%
+          disaggregate %>%
+          st_as_sf %>%
+          st_transform(crs = 27700) %>%
+          st_geometry %>%
+          st_make_grid(cellsize = c(10000,10000), crs = 27700, what = "polygons", square = FALSE)
 grid.sp <- as(grid, "Spatial")
 
 setwd("/Users/Yi-Min/Rsession/ScenicOrNot/predictor variables/Wilderness Dimensions")
@@ -80,12 +80,15 @@ grid.sp$Nat <- raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE) %>% as.
 grid.sp$Rem <- raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 grid.sp$Rug <- raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE) %>% as.vector
 
-test <- grid.sp@data %>% as_tibble %>% 
-                                 mutate(Sce = over(grid.sp, sc[,"Average"], fn = median)) %>% 
-                                 mutate('Abs' = raster::extract(Abs, grid.sp, fun = median, na.rm = TRUE),
-                                        'Nat' = raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE),
-                                        'Rem' = raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE),
-                                        'Rug' = raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE))
+test <- grid.sp@data %>% 
+          as_tibble %>% 
+          mutate(Sce = over(grid.sp, sc[,"Average"], fn = median)) %>% 
+          mutate(
+            'Abs' = raster::extract(Abs, grid.sp, fun = median, na.rm = TRUE),
+            'Nat' = raster::extract(Nat, grid.sp, fun = median, na.rm = TRUE),
+            'Rem' = raster::extract(Rem, grid.sp, fun = median, na.rm = TRUE),
+            'Rug' = raster::extract(Rug, grid.sp, fun = median, na.rm = TRUE)
+          )
 
 ####### END PART 1: load and peprpare data 
 
@@ -129,35 +132,87 @@ abline(lm(reg.mod), col='red', lwd = 2, lty = 2)
 
 #png(filename = "f2.png", w = 5, h = 5, units = "in", res = 300)
 #par(mar=c(0,0,0,0)) 
-grid.sp %>% sp.na.omit(margin = 1) %>%
-            choropleth(s.resids, shading = resid.shades)
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  choropleth(s.resids, shading = resid.shades)
 choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Residuals Map')
 
 # reset the plot margins
 #par(mar=c(5,4,4,2))
 #dev.off()
            
- outlier_under <- which(rstandard(ols.m) > 2) 
-outlier_over <- which(rstandard(ols.m) < -2) 
+outlier_under <- which(rstandard(ols.m) > 2) 
+ outlier_over <- which(rstandard(ols.m) < -2) 
 
-grid.sp[row.names(grid.sp) %in% names(outlier_over), ] %>% over(sc) %>%
-  select("Geograph.URI") -> urls
+urls <- grid.sp[row.names(grid.sp) %in% names(outlier_over), ] %>%
+          over(sc, .) %>% 
+          select("Geograph.URI")
 setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/overestimate")
-download.img <- function(url){
+download.img <- function(url) {
   require(jpeg)
   require(rvest)
   require(dplyr)
   id <- gsub("http://www.geograph.org.uk/photo/", "", url)
-  url %>% html_session %>%
-          html_nodes("img") %>%
-          .[1] %>%
-          html_attr("src") %>%
-          download.file(paste0(id,".jpg"), mode = "wb")
+  url %>% 
+    html_session %>%
+    html_nodes("img") %>%
+    .[1] %>%
+    html_attr("src") %>%
+    download.file(paste0(id,".jpg"), mode = "wb")
 }
-apply(urls, 1, download.img)
+
+for (url in urls[,1]) {
+  tryCatch(download.img(url),
+           error = function(e) print(paste(url, 'did not work out')))    
+}
+
+#apply(urls, 1, download.img)
 
 underestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_under), ]
 underestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(underestimate))]
+
+spplot(sc[underestimate,'Average'], pch=19, cex=0.1,
+       sp.layout = list(underestimate[, 'Sce'], zcol=c("Sce"), first = FALSE)) 
+
+require(dplyr)
+underestimate@data <- tibble::rownames_to_column(underestimate@data, "HexID")
+
+underestimate %>%
+  st_as_sf() %>%
+  st_intersection(st_as_sf(sc[,c("Average","Votes","Geograph.URI")])) %>%
+  mutate(gridimage_id = as.integer(gsub("http://www.geograph.org.uk/photo/", "", Geograph.URI))) ->
+  underestimation
+
+sc <- read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv", 
+               col_types = cols("ID" = col_number(),
+                                "Lat" = col_double(),
+                                "Lon" = col_double(),
+                                "Average" = col_double(),
+                                "Variance" = col_double(),
+                                "Votes" = col_character(),
+                                "Geograph URI" = col_character())) %>%
+  as.data.frame %>%
+  st_as_sf(coords=c("Lon","Lat"), crs=4326) %>%
+  st_transform(crs=27700) %>%
+  as("Spatial")
+
+Geograph <- function(url, pts) {
+  url %>% url() %>%
+    gzcon() %>%
+    readLines() %>%
+    textConnection() %>%
+    read.csv(sep = "\t") %>%
+    as.data.frame() %>%
+    left_join(pts, ., by = "gridimage_id") ->
+    pts
+  return(pts)
+}
+underestimation %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_base.tsv.gz", .) %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_text.tsv.gz", .) %>%
+  Geograph("http://data.geograph.org.uk/dumps/gridimage_geo.tsv.gz", .) ->
+  underestimation
+
 
 overestimate <- grid.sp[row.names(grid.sp) %in% names(outlier_over), ]
 overestimate$fitted.value <- ols.m$fitted.values[which(names(ols.m$fitted.values) %in% row.names(overestimate))]
