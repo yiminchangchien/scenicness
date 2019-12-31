@@ -254,7 +254,7 @@ for (url in urls[,1]) {
 # spplot(sc[underestimate,'Average'], pch=19, cex=0.1,
 #       sp.layout = list(underestimate[, 'Sce'], zcol=c("Sce"), first = FALSE)) 
 
-###### 3.1.4.
+###### 3.1.4. download the images of the outliers within the Lake District 
 temp <- tempfile()
 temp2 <- tempfile()
 download.file("https://inspire.nationalparks.uk/geoserver/ldnpa_inspire/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=ldnpa_inspire:LDNPA_Boundary&outputFormat=shape-zip", temp)
@@ -283,10 +283,71 @@ underestimation[np,] %>%
   unique()
 
 
+##### 3.1.5.
+temp <- tempfile()
+temp2 <- tempfile()
+download.file("https://www.arcgis.com/sharing/rest/content/items/3ce248e9651f4dc094f84a4c5de18655/data", temp)
+unzip(zipfile = temp, exdir = temp2)
+read.csv(file.path(temp2, "RUC11_OA11_EW.csv"), stringsAsFactors = FALSE) ->
+  RUC_OA
+rm(list = c("temp", "temp2"))
+
+temp <- tempfile()
+temp2 <- tempfile()
+download.file("https://opendata.arcgis.com/datasets/09b8a48426e3482ebbc0b0c49985c0fb_1.zip?outSR=%7B%22latestWkid%22%3A27700%2C%22wkid%22%3A27700%7D", temp)
+unzip(zipfile = temp, exdir = temp2)
+"Output_Area_December_2011_Full_Extent_Boundaries_in_England_and_Wales.shp" %>%
+  file.path(temp2, .) %>% 
+  st_read(stringsAsFactors = FALSE) ->
+  OA
+OA <- OA %>% left_join(RUC_OA, by = c("oa11cd" = "OA11CD"))
+
+OA %>%
+  filter(RUC11 == "Urban major conurbation" | 
+         RUC11 == "Urban city and town" |
+         RUC11 == "Urban minor conurbation" |
+         RUC11 == "Urban city and town in a sparse setting") %>%
+  group_by(RUC11) %>% 
+  summarize() ->
+  Urban 
+  
+require(classInt)
+# get quantile breaks. Add .00001 offset to catch the lowest value
+breaks_qt <- classIntervals(c(min(hex.res$Residuals) - .00001, hex.res$Residuals), n = 9, style = "quantile")
+breaks_qt
+hex.res %>% 
+  mutate(res_cat = cut(Residuals, breaks_qt$brks)) %>%
+  ggplot(.) + 
+  geom_sf(aes(fill=res_cat), colour = NA) +
+  geom_sf(data = Urban, color=alpha("green"), fill = NA) +
+  scale_fill_brewer(palette = "RdBu") +
+  theme(panel.grid.major = element_line(colour = 'transparent'),
+        axis.title.x=element_blank(), 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), 
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank())  
+
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  st_as_sf() %>%
+  st_transform(st_crs(Urban)) %>%
+  .[Urban, ] %>%
+  as("Spatial") %>%
+  lm(reg.mod, data = .) %>%
+  summary()
+
+
 ##### 3.2. Spatial Autocorrelation
 ###### 3.2.1. Global Moran's I for OLS regression residuals
 require(spdep) 
-grid.sp %>% sp.na.omit(margin = 1) %>%
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
   coordinates %>% 
   knearneigh(k = 6) %>%
   knn2nb %>%
@@ -300,13 +361,15 @@ grid.sp %>% sp.na.omit(margin = 1) %>%
 # 3.3. Local Model: 
 # 3.3.1. standard GWR
 dMat <-
-  grid.sp %>% sp.na.omit(margin = 1) %>% 
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>% 
   coordinates() %>%
   gw.dist()
 
 # Bandwidth selection
 bw <-
-  grid.sp %>% sp.na.omit(margin = 1) %>%
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
   bw.gwr(reg.mod, data = ., 
          kernel = "bisquare", 
          adaptive = F, 
@@ -359,8 +422,6 @@ gwr.m$SDF %>%
         panel.grid.minor=element_blank(),
         plot.background=element_blank())  
 
-
-
 # spplot(grid.sp, zco="Sce", col=NA)
 # require(stringr)
 # names(gwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
@@ -370,16 +431,20 @@ gwr.m$SDF %>%
 # do.call("grid.arrange", c(plots, ncol=5))
 
 # 3.3.2. Multiscale GWR
-mgwr.m <- grid.sp %>% sp.na.omit(margin = 1) %>%
-                      gwr.multiscale(reg.mod, data = ., kernel = "bisquare", adaptive = F, 
-                                     criterion = "dCVR", threshold=0.00001, bws0=rep(bw, length=4), 
-                                     predictor.centered=rep(TRUE, length=4))
+mgwr.m <- 
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  gwr.multiscale(reg.mod, data = ., kernel = "bisquare", adaptive = F,
+                 criterion = "dCVR", max.iterations=125, threshold=0.00001, 
+                 bws0=rep(bw, length=4), predictor.centered=rep(TRUE, length=4))
 
 names(mgwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
 
-plots <- grid.sp %>% sp.na.omit(margin = 1) %>%
-                     names %>%
-                     lapply(function(.x) spplot(sp.na.omit(grid.sp, margin = 1), .x, main = .x, col = NA))
+plots <- 
+  grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  names %>%
+  lapply(function(.x) spplot(sp.na.omit(grid.sp, margin = 1), .x, main = .x, col = NA))
 require(gridExtra)
 do.call("grid.arrange", c(plots, ncol=5))
 
