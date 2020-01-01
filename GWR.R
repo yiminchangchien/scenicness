@@ -122,12 +122,12 @@ ols.m <-
 summary(ols.m)
 round(coef(summary(ols.m)), 3)
 
-# 3.1.1. examine some model selection
+###### 3.1.1. examine some model selection
 summary(stepAIC(ols.m, trace = 0))
 round(coef(summary(stepAIC(ols.m, trace = 0))), 3)
 reg.mod2 <- as.formula(summary(stepAIC(ols.m, trace = 0))[1])
 
-###### 3.1.2. examine the residual of the global model
+###### 3.1.2. examine and visualise the outliers of the global model
 s.resids = rstandard(ols.m) # to compute some of the regression (leave-one-out deletion) diagnostics for linear and generalized linear models discussed in Belsley, Kuh and Welsch (1980), Cook and Weisberg (1982)
 resid.shades = shading(c(-2,2),c("red","grey","blue")) # red: overestimation; blue: underestimation
 cols = resid.shades$cols[1 + findInterval(s.resids, resid.shades$breaks)]
@@ -274,7 +274,6 @@ for (url in urls[,1]) {
            error = function(e) print(paste(url, 'did not work out')))    
 }
 
-
 underestimation[np,] %>%
   filter(ols.m.fitted.values < Average) %>%
 #  filter(HexID == "ID1766") %>%
@@ -343,7 +342,7 @@ grid.sp %>%
   summary()
 
 
-##### 3.2. Spatial Autocorrelation
+##### 3.2. examine the presence of spatial autocorrelation in the residuals of the global model
 ###### 3.2.1. Global Moran's I for OLS regression residuals
 require(spdep) 
 grid.sp %>% 
@@ -384,52 +383,6 @@ gwr.m <-
 gwr.m
 summary(gwr.m$SDF)
 
-require(ggplot2)  
-gwr.m$SDF %>%
-  st_as_sf() %>%
-  ggplot(.) + 
-  geom_sf(aes(fill=residual), colour = NA) +
-  scale_fill_gradient2(low = "#B2182B",
-                       mid = "white",
-                       high = "#2166AC",
-                       midpoint = 0) +
-  theme(panel.grid.major = element_line(colour = 'transparent'),
-        axis.title.x=element_blank(), 
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.title.y=element_blank(), 
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        panel.background=element_blank(),
-        panel.border=element_blank(),
-        panel.grid.minor=element_blank(),
-        plot.background=element_blank())  
-
-gwr.m$SDF %>%
-  st_as_sf() %>%
-  ggplot(.) + 
-  geom_sf(aes(fill=Local_R2), colour = NA) +
-  scale_fill_viridis() +
-  theme(panel.grid.major = element_line(colour = 'transparent'),
-        axis.title.x=element_blank(), 
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.title.y=element_blank(), 
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        panel.background=element_blank(),
-        panel.border=element_blank(),
-        panel.grid.minor=element_blank(),
-        plot.background=element_blank())  
-
-# spplot(grid.sp, zco="Sce", col=NA)
-# require(stringr)
-# names(gwr.m$SDF@data)[2:5] <- c("Abs","Nat","Rem","Rug")
-# spplot(gwr.m$SDF, zcol= names(gwr.m$SDF)[1:5], col=NA)
-# plots = lapply(names(gwr.m$SDF)[1:5], function(.x) spplot(gwr.m$SDF, .x, main = .x, col = NA))
-# require(gridExtra)
-# do.call("grid.arrange", c(plots, ncol=5))
-
 # 3.3.2. Multiscale GWR
 mgwr.m <- 
   grid.sp %>% 
@@ -455,252 +408,246 @@ spplot(mgwr.m$SDF, zcol= "residual", col=NA)
 
 ####### END PART 3: Regression - Global and Local Model
 
-
-####### PART 4: Results - OLS and GWR
-# 0. choropleth map
-library(broom)
-setwd("/Users/Yi-Min/R session/ScenicOrNot/")
-  sc.shp <- readOGR(dsn = "./ScenicOrNot dataset/ScenicOrNot_Wales.shp", stringsAsFactors = FALSE)  
- wal.shp <- readOGR(dsn = "./Wales boundary/wales_ol_2001.shp")
-  np.shp <- readOGR(dsn = "./NationalParks/NRW_NATIONAL_PARKPolygon.shp")
-aonb.shp <- readOGR(dsn = "./AreaOfOutstandingNaturalBeauty/NRW_AONBPolygon.shp")
-
-bng   <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
-          +ellps=airy +datum=OSGB36 +units=m +no_defs"
-wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-          
-  sc.shp <- spTransform(sc.shp, wgs84)
- wal.shp <- spTransform(wal.shp,wgs84)
-  np.shp <- spTransform(np.shp, wgs84)
-aonb.shp <- spTransform(aonb.shp, wgs84)
-aonb.shp <- aonb.shp[wal.shp, ]
-aonb.shp <- aonb.shp[-3, ]
-
-  sc.df <- as.data.frame(sc.shp, region = "OBJECTID")
- wal.df <- tidy(wal.shp)
-  np.df <- tidy(np.shp)
-aonb.df <- tidy(aonb.shp)
-
-# choropleth with tmap
-gg <- ggplot() +
-		 geom_polygon(data = wal.df, aes(x = long, y = lat, group = group),
-		 			  fill = "gray92") +
- 		 geom_point(data = sc.df, aes(x = Lon, y = Lat, colour = sc.df$median), size = 0.3) + 
- 		 scale_colour_continuous(name = "Median of Scenic Rating", low = "Yellow", high = "Brown",
- 		 					   space = "Lab", na.value = "grey50", breaks = c(1, 5.5, 10), 
- 		 					   labels = c(1, 5.5, 10), limits = c(1, 10), 
- 		 					   guide = guide_colourbar(title = "Median of Scenic Rating", 
- 		 					                           title.position = "top",
- 		 					                           title.hjust = 0.5,
- 		 					                           title.vjust = 0.8,
- 		 					                           barwidth = 10)) +
- 		 geom_polygon(data = np.df, aes(x = long, y = lat, group = group),
-   		 			  fill = "transparent", color = "green3") +
-   		 geom_polygon(data = aonb.df, aes(x = long, y = lat, group = group),
-   		 			  fill = "transparent", color = "dodgerblue3") +
- 		 coord_map() +		  		 
- 		 labs(x = NULL, y = NULL, caption = "Source: http://scenicornot.datasciencelab.co.uk/") +
- 		 theme(plot.caption = element_text(face = "bold", family = "Arial", size = 10, 
- 		                                   color = "gray", margin = margin(t = 10, r = 80))) +
-         theme(axis.line = element_blank(),
-  		 	   axis.text = element_blank(),
-  		 	   axis.ticks = element_blank(),
-  		 	   legend.position = "bottom",
-  		 	   legend.direction = "horizontal",
-  		 	   legend.title = element_text(face = "bold", family = "Helvetica", size = 15),
-  		 	   legend.text = element_text(face = "bold", family = "Arial", size = 10),
-  		       panel.grid.major = element_blank(),
-  		 	   panel.grid.minor = element_blank(),
-  		 	   panel.border = element_blank(),
-  			   panel.background = element_blank()) 
-  		 #labs(colour = "Median of Scenic Rating", position = "top") 
-  		 #guides(colour = guide_legend(title.position = "top"), guide = "colourbar") 
-plot(gg)
-ggsave(file = "./Figs/Scenicness.png", plot = gg, width = 10, height = 8)
+####### PART 4: Results - Tables and Figures #######
+##### 4.1. Linear regression results (TABLE 1) 
  
- 
-# 1. Initial results: Correlations
-head(sc@data)
-corr.m <- cor(sc@data[,c(8,20:23)])
-rownames(corr.m) <- c("Sce", "Acc", "Nat", "Rem", "Rug")
-colnames(corr.m) <- c("Sce", "Acc", "Nat", "Rem", "Rug")
-co = melt(corr.m)
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs")
-png(filename = "f1.png", w = 5, h = 5, units = "in", res = 300)
-ggplot(co, aes(Var1, Var2)) +  # x and y axes => Var1 and Var2
-    geom_tile(aes(fill = value)) +  # background colours are mapped according to the value column
-    geom_text(aes(fill = co$value, label = round(co$value, 2))) +  # write the values
-    coord_fixed() +
-    xlab("") +
-    ylab("") +
-    labs(fill = "Corr. Coef.") +
-    theme_bw() +
-    #theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-    scale_fill_gradientn(colours = brewer.pal(9, 'Blues'))
-dev.off()
+ols.m %>%
+  summary() %>%
+  coef() %>%
+  round(3) %>%
+  data.frame() ->
+  tab1
 
-corr.m <- cor(sc@data[,c(20:23,8,10:18)])
-head(corr.m)
-rownames(corr.m) <- c("Sce", "Acc", "Nat", "Rem", "Rug", "LCM1", "LCM2", "LCM3", "LCM4", "LCM5", "LCM6", "LCM7", "LCM8", "LCM9")
-colnames(corr.m) <- c("Sce", "Acc", "Nat", "Rem", "Rug", "LCM1", "LCM2", "LCM3", "LCM4", "LCM5", "LCM6", "LCM7", "LCM8", "LCM9")
-co = melt(corr.m)
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs")
-png(filename = "f0.png", w = 12, h = 12, units = "in", res = 300)
-ggplot(co, aes(Var1, Var2, fill = value)) +  # x and y axes => Var1 and Var2
-    geom_tile() +  # background colours are mapped according to the value colum
-    geom_text(aes(fill = co$value, label = round(co$value, 2)), size = 3) +  # write the values
-    coord_fixed() +
-    xlab("") +
-    ylab("") +
-    labs(fill = "Corr. Coef.") +
-    theme_bw() +
-    #theme(axis.text.x = element_text(angle = 60, hjust =1)) + 
-    #scale_fill_gradientn(colours = brewer.pal(9,'RdBu)) +
-    #scale_fill_brewer(palette = "RdBu") +
-    scale_fill_gradient2(low = "#B2182B",
-                         mid = "white",
-                         high = "#2166AC",
-                         midpoint = 0)  # determine the colour
-dev.off()
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  st_as_sf() %>%
+  st_transform(st_crs(Urban)) %>%
+  .[Urban, ] %>%
+  as("Spatial") %>%
+  lm(reg.mod, data = .) ->
+  ols.m.urban
 
-# 2. Regression results OLS - original and selected
-tab1a <- round(coef(summary(ols.m)), 3)
-tab1b <- round(coef(summary(stepAIC(ols.m, trace = 0))), 3)
-index <- match(rownames(tab1b), rownames(tab1a))
-tab1 <- matrix(NA, nrow = nrow(tab1a), ncol = ncol(tab1a)*2)
-tab1[, 1:4] <- tab1a
-tab1[index, 5:8] <- tab1b
-tab1 <- data.frame(tab1)
-rownames(tab1) <- rownames(tab1a)
-colnames(tab1) <- append(colnames(tab1a), colnames(tab1a))
-kable(tab1)
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs")
-write.csv(tab1, "Tab1.csv")
+%>%
+  summary() %>%
+  coef() %>%
+  round(3) %>%
+  data.frame() ->
+  tab1
 
-# 3. GWR - Standard and Flexible bandwidth      
-#tab2a <- round(t(apply(gwr.m$SDF@data[,1:13], 2, function(x) summary(x)[c(2,3,5)])), 3) # I have adjusted the number of rounding.
-#bw.vec <- round(gwr.fb[[5]][nrow(gwr.fb[[5]]),]/1000, 1)
-#bw.perc <-round(gwr.fb[[5]][nrow(gwr.fb[[5]]),]/ max(dMat)*100, 1)
-#tab2b <- round(t(apply(gwr.fb$SDF@data[,1:13], 2, function(x) summary(x)[c(2,3,5)])), 3)
-#tab2 <- data.frame(tab2a, bandwidths = bw.vec, percentage = bw.perc, tab2b, round(tab2a[,3]-tab2a[,1], 3), round(tab2b[,3]-tab2b[,1], 3))
-#colnames(tab2) <- c("Standard 1st Qu.", "Standard Median", "Standard 3rd Qu.", "bandwidths", "percentage", "FB 1st Qu.", "FB Median", "FB 3rd Qu.", "Standard IQR", "FB IQR" )
 
-tab2a <- round(t(apply(gwr.m$SDF@data[,1:13], 2, function(x) summary(x)[c(2,3,5)])), 3) # I have adjusted the number of rounding.
-bw.vec <- round(gwr.fb[[5]][nrow(gwr.fb[[5]]),]/1000, 1)
-bw.perc <-round(gwr.fb[[5]][nrow(gwr.fb[[5]]),]/ max(dMat)*100, 1)
-tab2b <- round(t(apply(gwr.fb$SDF@data[,1:13], 2, function(x) summary(x)[c(2,3,5)])), 3)
-tab2 <- data.frame(tab2a, round(tab2a[,3]-tab2a[,1], 3), bandwidths = bw.vec, percentage = bw.perc, tab2b, round(tab2b[,3]-tab2b[,1], 3))
-colnames(tab2) <- c("Standard 1st Qu.", "Standard Median", "Standard 3rd Qu.", "Standard IQR", "bandwidths", "percentage",
-                    "FB 1st Qu.", "FB Median", "FB 3rd Qu.", "FB IQR" )
 
+##### TABLE 2.
+tab2a <-
+  gwr.m$SDF@data[,1:5] %>%
+  apply(2, function(x) summary(x)[c(2,3,5)]) %>%
+  t() %>%
+  round(3)
+bw.vec <- round(mgwr.m[[5]][nrow(mgwr.m[[5]]), ]/1000, 1)
+bw.perc <- round(mgwr.m[[5]][nrow(mgwr.m[[5]]),]/ max(dMat)*100, 1)
+tab2b <- 
+  gwr.m$SDF@data[,1:5] %>%
+  apply(2, function(x) summary(x)[c(2,3,5)]) %>%
+  t() %>%
+  round(3)
+### Python-based implementation
+tab2c <- 
+  gwr.m$SDF@data[,1:5] %>%
+  apply(2, function(x) summary(x)[c(2,3,5)]) %>%
+  t() %>%
+  round(3)
+
+tab2  <- data.frame(tab2a, round(tab2a[,3]-tab2a[,1], 3), 
+                    bandwidths = bw.vec, percentage = bw.perc, 
+                    tab2b, round(tab2b[,3]-tab2b[,1], 3))
+colnames(tab2) <- c("Standard 1st Qu.", "Standard Median", "Standard 3rd Qu.", "Standard IQR", "bandwidths", "percentage", "FB 1st Qu.", "FB Median", "FB 3rd Qu.", "FB IQR" )
 kable(tab2)
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs")
-write.csv(tab2, "Tab2.csv")
-# here we can see that the optimal bandwidths for different factors vary from the very local (LCM1, LCM4, LCM5, LCM6, LCM8 Ruggedness), to the intermediate(LCM9) and the global (Naturalness, Remoteness, Access, LCM2)
 
-# 4. Coefficent maps and significant locations (t values)
-# load wales outline
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Wales boundary")
-wal <- readOGR("wales_ol_2001.shp")
-wal <- spTransform(wal, proj2)
 
-#plot(clip)
-plot(scj)
-add.alpha(brewer.pal(5, "Greys"), 0.5)
-#plot(sc, add = T, pch = 1, cex = 0.2, col = '#25252580')
-#plot(scj, add = T, pch = 1, cex = 0.2, col = '#25252580')
-plot(wal, add = T, border = 'red')
+###### FIGURE 2. The residuals of the global model 
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  st_as_sf() %>%
+  mutate(Residuals = ols.m$residuals) %>%
+  select(Residuals) ->
+  hex.res
 
-## Map all together
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs")
-png(filename = "f3.png", w = 12, h = 12, units = "in", res = 300)
-tm_shape(gwr.m$SDF) +
-    #tm_dots(col = c("LCM1", "LCM2", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-    tm_dots(col = c("Ruggedness", "Naturalness", "Access", "Remoteness", 
-                    "LCM1", "LCM2", "LCM3", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-        size = 0.3, style = "kmeans", palette = "RdBu") +
-    tm_format_NLD_wide() +
-    tm_shape(wal) +
-    tm_borders()
+ggplot(data = hex.res) +
+  geom_sf(aes(fill = Residuals)) +
+  scale_fill_viridis_c(option = "plasma", trans = "sqrt")
+
+require(classInt)
+# get quantile breaks. Add .00001 offset to catch the lowest value
+breaks_qt <- classIntervals(c(min(hex.res$Residuals) - .00001, hex.res$Residuals), n = 9, style = "quantile")
+breaks_qt
+hex.res %>% 
+  mutate(res_cat = cut(Residuals, breaks_qt$brks)) %>%
+  ggplot(.) + 
+  geom_sf(aes(fill=res_cat), colour = NA) +
+  scale_fill_brewer(palette = "RdBu") +
+  theme(panel.grid.major = element_line(colour = 'transparent'),
+        axis.title.x=element_blank(), 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), 
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank())  
+
+############################################################
+
+###### FIGURE 3. The coefficient estimates of the GWR model
+names(gwr.m$SDF) <- 
+  names(gwr.m$SDF) %>% 
+  gsub("scale(","", ., fixed = TRUE) %>% 
+  gsub(")", "", ., fixed = TRUE)
+
+
+ggplot.fun <- function(data.i = gwr.m$SDF, i = 2, type = "pos", tab = "MGWR") {
+  require(ggplot2)
+  require(scales)
+  require(classInt)
+  require(viridis)
+  TV = data.i@data[, i+15]
+  index <- TV > 1.96 | TV < -1.96
+  var = names(data.i)[i]
+  tit = paste0(tab, ": ", var)
+  data.i <- 
+    data.i %>%
+    fortify(region = "id") %>%
+    merge(gwr.m$SDF@data, by = "id")
+    minVal <- min(data.i[, var], na.rm = T)
+    maxVal <- max(data.i[, var], na.rm = T)
+  # compute labels
+  brks <- classIntervals(c(minVal - .00001, data.i[, var], maxVal + .00001), n = 8, style = "fisher")$brks
+  data.i$brks <- cut(data.i[, var], breaks = brks, include.lowest = TRUE)
+  p <-  
+    ggplot(data.i) +
+    geom_polygon(aes(x = long, y = lat, group = id, fill = data.i[, var])) +
+    coord_equal() +
+    labs(x = NULL, y = NULL, title = tit, size = 1) +
+    theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+   
+    if (type == "div") {
+      p <- p + scale_fill_gradient2(low = ("#D73027"), mid = "#FFFFBF", name = NULL,
+                                      high = ("#4575B4"), midpoint = 0, space = "Lab",
+                                      na.value = "white",
+                                      guide = guide_colourbar(title.position = "top",
+                                                              title.hjust = 0.5,
+                                                              title.vjust = 0.8,
+                                                              barwidth = 15))
+    }
+    if (type == "pos") {
+      p <- p + scale_fill_distiller(type = "seq", palette = "GnBu", name = NULL, direction = 1,
+                                    breaks = pretty_breaks(n = 5),
+                                    guide = guide_colourbar(title.position = "top",
+                                                            title.hjust = 0.5,
+                                                            title.vjust = 0.8,
+                                                            barwidth = 15))
+    }
+    if (type == "neg") {
+      p <- p + scale_fill_distiller(type = "seq", palette = "OrRd", name = NULL, direction = 1,
+                                      guide = guide_colourbar(title.position = "top",
+                                                              title.hjust = 0.5,
+                                                              title.vjust = 0.8,
+                                                              barwidth = 15))
+    }
+    
+  p <- p + geom_polygon(data = gwr.m$SDF[index, ], aes(x = long, y = lat, group = group), fill = "transparent", color = "black", alpha = 0.5)
+  return(p)
+}
+p1 <- ggplot.fun(data.i = gwr.m$SDF, i = 1, type = "pos", tab = "GWR")
+p2 <- ggplot.fun(data.i = gwr.m$SDF, i = 2, type = "div", tab = "GWR")
+p3 <- ggplot.fun(data.i = gwr.m$SDF, i = 3, type = "div", tab = "GWR")
+p4 <- ggplot.fun(data.i = gwr.m$SDF, i = 4, type = "div", tab = "GWR")    
+p5 <- ggplot.fun(data.i = gwr.m$SDF, i = 5, type = "div", tab = "GWR")    
+
+## multiplot function
+multiplot <- function(plot.list, file, cols=3, layout=NULL) {
+  library(grid)
+  numPlots = length(plot.list)
+  if (is.null(layout)) {
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  if (numPlots==1) {
+    print(plots[[1]])
+  } else {
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    for (i in 1:numPlots) {
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      print(plot.list[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                          layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+## map together
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/MGWRonScenicness")
+png(filename = "GWR_MGWR_wilderness.png", w = 10*2, h = 6*2, units = "in", res = 300)
+par(mar = c(0,0,0,0))
+multiplot(list(p1, p2, p3, p4, p5), cols = 5)
 dev.off()
 
-png(filename = "f4.png", w = 12, h = 12, units = "in", res = 300)
-tm_shape(gwr.fb$SDF) +
-    #tm_dots(col = c("LCM1", "LCM2", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-    tm_dots(col = c("Ruggedness", "Naturalness", "Access", "Remoteness", 
-                    "LCM1", "LCM2", "LCM3", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-        size = 0.3, style = "kmeans", palette = "RdBu") +
-    tm_format_NLD_wide() +
-    tm_shape(wal) +
-    tm_borders()
-dev.off()
+ 
+####### End PART 4: Results - Tables and Figures #######   
 
-png(filename = "f5.png", w = 12, h = 12, units = "in", res = 300)
-tm_shape(scj@data) +
-    #tm_dots(col = c("LCM1", "LCM2", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-    tm_dots(col = c("Ruggedness", "Naturalness", "Access", "Remoteness", 
-                    "LCM1", "LCM2", "LCM3", "LCM4", "LCM5", "LCM6", "LCM8", "LCM9"),
-        size = 0.3, style = "kmeans", palette = "RdBu") +
-    tm_format_NLD_wide() +
-    tm_shape(wal) +
-    tm_borders()
-dev.off()
+if (type == "div") {
+  p <- p + scale_fill_gradient2(low = ("#CB181D"), mid = "white", name = NULL,
+                                high = ("#2171B5"), midpoint = 0, space = "Lab",
+                                na.value = "white",
+                                guide = guide_colourbar(title.position = "top",
+                                                        title.hjust = 0.5,
+                                                        title.vjust = 0.8,
+                                                        barwidth = 15))
+  
 
-## now map the significant locations
-setwd("/Users/Yi-Min/R session/ScenicOrNot/Figs/0122")
-names(gwr.m$SDF)[c(2:5, 20:23, 33:36)] <- c("Rug", "Nat", "Acc", "Rem", "Rug_SE", "Nat_SE", "Acc_SE", "Rem_SE", "Rug_TV", "Nat_TV", "Acc_TV", "Rem_TV")
-names(gwr.fb$SDF)[c(2:5, 17:20, 30:33)] <- c("Rug", "Nat", "Acc", "Rem", "Rug_SE", "Nat_SE", "Acc_SE", "Rem_SE", "Rug_TV", "Nat_TV", "Acc_TV", "Rem_TV")
 
-vars <- names(scj)
-vars <- vars[c(23, 21, 22, 20, 10:15, 17, 18)]
-vars[1:4] <- c("Rug", "Nat", "Rem", "Acc")
-i <- 3
-var <- vars[i]
+scale_fill_manual(values = plasma(9),
+                  breaks = brks,
+                  name = NULL,
+                  drop = FALSE,
+                  labels = levels(data.i$brks),
+                  guide = guide_legend(direction = "horizontal",
+                                       keyheight = unit(2, units = "mm"),
+                                       keywidth = unit(70/length(labels), units = "mm"),
+                                       title.position = 'top',
+                                       title.hjust = 0.5,
+                                       label.hjust = 1,
+                                       nrow = 1,
+                                       byrow = T,
+                                       reverse = T,
+                                       label.position = "bottom")) +
 
-index <- gwr.m$SDF@data[, paste0(var, "_TV")] > 1.96 | gwr.m$SDF@data[, paste0(var,"_TV")] < -1.96
-gwr.index <- gwr.m$SDF[index,]
-p1 <- tm_shape(gwr.m$SDF) +
-    	tm_dots(col = c(var),
-       	size = 0.05, breaks = breaks.list[[i]], palette = "RdBu",
-    	  legend.hist = F) +
-    	tm_format_NLD_wide() +
-    	tm_layout(frame = F, #title = "GWR",
-   	    legend.hist.size = 0.5,
-       	legend.outside = F) +
-   		tm_shape(gwr.index) +
-    	tm_dots(col = "#25252580", size = 0.01, shape = 1, alpha = 0.08) + # I adjust the size parameter
-    	tm_shape(wal) +
-    	tm_borders()
-    	
-## and compare with FB GWR
-index <- gwr.fb$SDF@data[, paste0(var, "_TV")] > 1.96 | gwr.fb$SDF@data[, paste0(var, "_TV")] < -1.96
-gwr.fb.index <- gwr.fb$SDF[index,]
-p2 <- tm_shape(gwr.fb$SDF) +
-   		tm_dots(col = c(var),
-       		size = 0.05, breaks = breaks.list[[i]],
-       		palette = "RdBu", legend.hist = F) +
-    	tm_format_NLD_wide() +
-    	tm_layout(frame = F, #title = "FBGWR",
-        	    legend.hist.size = 0.5,
-            	legend.outside = F) +
-   		tm_shape(gwr.fb.index) +
-    	tm_dots(col = "#25252580", size = 0.01, shape = 1, alpha = 0.08) +
-    	tm_shape(wal) +
-    	tm_borders()
-
-	
-## multiple plotting!
-library(grid)
-png(filename = paste0(var,".png"), w = 2.5, h = 5, units = "in", res = 300)
-#grid.newpage()
-#par(mar = c(1,1,1,1))
-# set up the layout
-pushViewport(viewport(layout = grid.layout(2,1)))
-# plot using the print command
-print(p1, vp = viewport(layout.pos.row = 1, layout.pos.col = 1, height = 5))
-print(p2, vp = viewport(layout.pos.row = 2, layout.pos.col = 1, height = 5))
-dev.off()
-
-setwd("/Users/Yi-Min/R session/ScenicOrNot")
-save.image("GWR_FB.RData")
-####### End PART 4: Results - OLS and GWR #######   
+  
+  
+  
+  
+  
+  scale_fill_manual(values = plasma(8),
+                    breaks = brks,
+                    name = NULL,
+                    drop = FALSE,
+                    #labels = labels_scale,
+                    guide = guide_legend(direction = "horizontal",
+                                         keyheight = unit(2, units = "mm"),
+                                         keywidth = unit(70 / length(labels), units = "mm"),
+                                         #title.position = 'top',
+                                         title.hjust = 0.5,
+                                         label.hjust = 1,
+                                         nrow = 1,
+                                         byrow = T,
+                                         reverse = T,
+                                         label.position = "bottom")
+  )
