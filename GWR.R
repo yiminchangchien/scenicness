@@ -4,23 +4,23 @@
 
 ### Load data and libraries
 ### set up data.sp etc
-library(raster)
-library(rgdal)
-library(rgeos)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(landscapemetrics)
 library(tidyr)
-library(spatstat)
 library(maptools)
 library(GISTools)
 library(GWmodel)
 library(MASS)
-library(sp)
-library(sf)
-library(ggplot2)
-library(GGally)
-library(landscapemetrics)
 library(reshape2)
 library(raster)
 library(readr)
+library(rgdal)
+library(rgeos)
+library(sp)
+library(sf)
+library(spatstat)
 library(spatialEco)
 
 ##### 1
@@ -49,6 +49,28 @@ sc <-
 #   sc$IQR[[i]] <- IQR(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 #   sc$Variance[[i]] <- var(as.numeric(strsplit(as.character(sc$Votes[[i]]), ",")[[1]]))
 # }
+
+# bng <- "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 
+#         +ellps=airy +datum=OSGB36 +units=m +no_defs"
+# wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+# 
+# setwd("/Users/Yi-Min/Rsession/ScenicOrNot/ScenicOrNot dataset/")
+# "ScenicOrNot_Geograph.csv" %>% read.csv() %>%
+#   drop_na(wgs84_long, viewpoint_northings) %>%
+#   #drop_na(viewpoint_eastings, viewpoint_northings) %>%
+#   st_as_sf(coords = c("wgs84_long", "wgs84_lat"), remove=F, crs=wgs84) %>%
+#   st_transform(crs=bng) %>% 
+#   as("Spatial") -> sc
+# 
+# setwd("/Users/Yi-Min/Rsession/LANDMAP/Data/")
+# wales <- readOGR("wales_ol_2001.shp") %>% spTransform(crs(sc))
+# 
+# setwd("/Users/Yi-Min/Rsession/ScenicOrNot/MGWRonScenicness/OSGB_Grids-master/Shapefile")
+# "OSGB_Grid_5km.shp" %>% readOGR() %>% spTransform(crs(sc)) -> grd
+# #grd <- grd[which(grd$WALES=="t"),]
+
+grid <-
+  
 
 grid <- 
   raster::getData("GADM", country = "United Kingdom", level = 1) %>%
@@ -233,7 +255,6 @@ overestimation <-
   Geograph("http://data.geograph.org.uk/dumps/gridimage_text.tsv.gz", .) %>%
   Geograph("http://data.geograph.org.uk/dumps/gridimage_geo.tsv.gz", .)
 
-
 setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/overestimate")
 require(foreach)
 urls <-
@@ -384,10 +405,10 @@ gwr.m
 summary(gwr.m$SDF)
 
 # 3.3.2. Multiscale GWR
-mgwr.m <- 
+mgwr.n <- 
   grid.sp %>% 
   sp.na.omit(margin = 1) %>%
-  gwr.multiscale(reg.mod, data = ., kernel = "bisquare", adaptive = F,
+  gwr.multiscale(reg.mod, data = ., kernel = "gaussian", adaptive = F,
                  criterion = "dCVR", max.iterations=125, threshold=0.00001, 
                  bws0=rep(bw, length=4), predictor.centered=rep(TRUE, length=4))
 
@@ -427,13 +448,60 @@ grid.sp %>%
   lm(reg.mod, data = .) ->
   ols.m.urban
 
-%>%
-  summary() %>%
-  coef() %>%
-  round(3) %>%
-  data.frame() ->
-  tab1
+# categorising the settings into urban, suburban, and rural areas
+mapping = data.frame(RUC11=unique(OA$RUC11), category = c("Urban","Suburban","Rural","Rural","Rural",
+                                                          "Suburban","Rural","Rural","Rural","Suburban"))
 
+# plot fitted and observed scatter plot
+grid.sp %>% 
+  sp.na.omit(margin = 1) %>%
+  st_as_sf() %>%
+  st_transform(st_crs(OA)) %>%
+  mutate(fitted.values = ols.m$fitted.values) %>%
+  select("Actual.Scenicness" = "Sce", "Estimated.Scenicness" = "fitted.values") %>%
+  st_join(OA[,"RUC11"], left = TRUE) %>%
+  st_drop_geometry() %>%
+  merge(mapping, by= "RUC11") ->
+  data
+
+grid.sp %>% 
+  sp.na.omit(margin = 1) ->
+  grd
+
+grd %>% 
+  gCentroid(., byid = TRUE) %>% 
+  coordinates() %>% 
+  as.data.frame() ->
+  grd_cent
+
+grd <- SpatialPolygonsDataFrame(grd, data = data.frame(grd, grd_cent))
+writeOGR(grd, dsn="/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/Grid", "grd_10k", driver="ESRI Shapefile", overwrite=TRUE)
+
+
+  mutate(X = st_centroid(.), "Y" = st_centroid(.)) %>%
+  
+  
+  grd %>% gCentroid(., byid = TRUE) %>% coordinates() %>% as.data.frame() -> grd_cent 
+
+ggscatterhist(data, x = "Actual.Scenicness", y = "Estimated.Scenicness",
+              color = "category", shape = 19, size = 0.5, alpha = 0.6,
+              palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+              #add =  "reg.line",
+              margin.plot = "density", margin.space = FALSE,
+              margin.params = list(fill = "category", color = "black", size = 0.2),
+              main.plot.size = 2, margin.plot.size = 1,
+              title = NULL, xlab = "Actual scenicness", ylab = "Estimated scenicness",
+              legend = "bottom", ggtheme = theme_bw())
+
+ggscatterhist(data, x = "Actual.Scenicness", y = "Estimated.Scenicness",
+              color = "category", shape = 19, size = 0.5, alpha = 0.6,
+              palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+              add =  "reg.line",
+              margin.plot = "boxplot", margin.space = FALSE,
+              margin.params = list(fill = "category", color = "black", size = 0.2),
+              main.plot.size = 2, margin.plot.size = 1,
+              title = NULL, xlab = "Actual scenicness", ylab = "Estimated scenicness",
+              legend = "bottom", ggtheme = theme_bw())
 
 
 ##### TABLE 2.
@@ -445,7 +513,7 @@ tab2a <-
 bw.vec <- round(mgwr.m[[5]][nrow(mgwr.m[[5]]), ]/1000, 1)
 bw.perc <- round(mgwr.m[[5]][nrow(mgwr.m[[5]]),]/ max(dMat)*100, 1)
 tab2b <- 
-  gwr.m$SDF@data[,1:5] %>%
+  mgwr.m$SDF@data[,1:5] %>%
   apply(2, function(x) summary(x)[c(2,3,5)]) %>%
   t() %>%
   round(3)
@@ -504,29 +572,40 @@ names(gwr.m$SDF) <-
   gsub("scale(","", ., fixed = TRUE) %>% 
   gsub(")", "", ., fixed = TRUE)
 
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/Grid")
+ t_val <- cbind(read.csv("gwr_tvals_5k.csv", header = FALSE), read.csv("mgwr_tvals_5k.csv", header = FALSE))
+ names(t_val) <- c( "GWR_Int_TV", "GWR_Abs_TV", "GWR_Nat_TV", "GWR_Rem_TV", "GWR_Rug_TV",
+                   "MGWR_Int_TV","MGWR_Abs_TV","MGWR_Nat_TV","MGWR_Rem_TV","MGWR_Rug_TV")
+ grd_5k <- st_read("sc_mgwr_5k.shp")  
+ names(grd_5k) <- names(grd_5k) %>% sub("mgwr", "MGWR", .) %>% sub("gwr", "GWR", .) %>% sub("int", "Int", .)
+ grd_5k <- st_sf(data.frame(grd_5k, t_val))
+ st_write(grd_5k, "sc_5k.shp")
 
-ggplot.fun <- function(data.i = gwr.m$SDF, i = 2, type = "pos", tab = "MGWR") {
+ 
+ grd_10k <- st_read("sc_10k.shp")
+summary(grd_10k)
+names(grd_10k)[8:27] <- c( "GWR_Int", "GWR_Abs", "GWR_Nat", "GWR_Rem", "GWR_Rug",
+                          "MGWR_Int","MGWR_Abs","MGWR_Nat","MGWR_Rem","MGWR_Rug",
+                            "GWR_Int_TV", "GWR_Abs_TV", "GWR_Nat_TV", "GWR_Rem_TV", "GWR_Rug_TV",
+                           "MGWR_Int_TV","MGWR_Abs_TV","MGWR_Nat_TV","MGWR_Rem_TV","MGWR_Rug_TV")
+
+ggplot.fun <- function(data.i = sf, var = "Int", type = "pos", tab = "MGWR") {
   require(ggplot2)
   require(scales)
-  require(classInt)
-  require(viridis)
-  TV = data.i@data[, i+15]
-  index <- TV > 1.96 | TV < -1.96
-  var = names(data.i)[i]
+  TV = paste0(tab,"_",var,"_TV")
+  TV = ensym(TV)
+  TV_sig <-
+    data.i %>% 
+    st_as_sf() %>%
+    filter(!!TV > 1.96 | !!TV < -1.96)
   tit = paste0(tab, ": ", var)
-  data.i <- 
-    data.i %>%
-    fortify(region = "id") %>%
-    merge(gwr.m$SDF@data, by = "id")
-    minVal <- min(data.i[, var], na.rm = T)
-    maxVal <- max(data.i[, var], na.rm = T)
-  # compute labels
-  brks <- classIntervals(c(minVal - .00001, data.i[, var], maxVal + .00001), n = 8, style = "fisher")$brks
-  data.i$brks <- cut(data.i[, var], breaks = brks, include.lowest = TRUE)
+  Val = paste0(tab,"_", var)
+  Val = sym(Val)
   p <-  
-    ggplot(data.i) +
-    geom_polygon(aes(x = long, y = lat, group = id, fill = data.i[, var])) +
-    coord_equal() +
+    ggplot() +
+    #geom_sf(data = summarise(data.i), fill = NA) +
+    geom_sf(data = data.i, aes(fill = !!Val), lwd = 0) +
+    coord_sf() +
     labs(x = NULL, y = NULL, title = tit, size = 1) +
     theme(axis.line = element_blank(),
           axis.text = element_blank(),
@@ -537,40 +616,47 @@ ggplot.fun <- function(data.i = gwr.m$SDF, i = 2, type = "pos", tab = "MGWR") {
           panel.grid.minor = element_blank(),
           panel.border = element_blank(),
           panel.background = element_blank())
-   
     if (type == "div") {
-      p <- p + scale_fill_gradient2(low = ("#D73027"), mid = "#FFFFBF", name = NULL,
-                                      high = ("#4575B4"), midpoint = 0, space = "Lab",
-                                      na.value = "white",
-                                      guide = guide_colourbar(title.position = "top",
-                                                              title.hjust = 0.5,
-                                                              title.vjust = 0.8,
-                                                              barwidth = 15))
+      p <- p + scale_fill_gradient2(low = ("#B2182B"), mid = "#F7F7F7", name = NULL,
+                                    high = ("#2166AC"), midpoint = 0, space = "Lab",
+                                    na.value = "white",
+                                    guide = guide_colourbar(title.position = "top",
+                                                            title.hjust = 0.5,
+                                                            title.vjust = 0.8,
+                                                            barwidth = 15))
     }
     if (type == "pos") {
-      p <- p + scale_fill_distiller(type = "seq", palette = "GnBu", name = NULL, direction = 1,
-                                    breaks = pretty_breaks(n = 5),
+      p <- p + scale_fill_distiller(type = "seq", palette = "YlGnBu", name = NULL, direction = 1,
+                                    #breaks = pretty_breaks(n = 5),
                                     guide = guide_colourbar(title.position = "top",
                                                             title.hjust = 0.5,
                                                             title.vjust = 0.8,
                                                             barwidth = 15))
     }
     if (type == "neg") {
-      p <- p + scale_fill_distiller(type = "seq", palette = "OrRd", name = NULL, direction = 1,
+      p <- p + scale_fill_distiller(type = "seq", palette = "YlOrRd", name = NULL, direction = 1,
                                       guide = guide_colourbar(title.position = "top",
                                                               title.hjust = 0.5,
                                                               title.vjust = 0.8,
                                                               barwidth = 15))
     }
     
-  p <- p + geom_polygon(data = gwr.m$SDF[index, ], aes(x = long, y = lat, group = group), fill = "transparent", color = "black", alpha = 0.5)
+   p <- p + 
+     geom_sf(data = TV_sig, fill = NA, colour = "black", alpha = 0.5, lwd = 0.1) +
+     coord_sf()
   return(p)
 }
-p1 <- ggplot.fun(data.i = gwr.m$SDF, i = 1, type = "pos", tab = "GWR")
-p2 <- ggplot.fun(data.i = gwr.m$SDF, i = 2, type = "div", tab = "GWR")
-p3 <- ggplot.fun(data.i = gwr.m$SDF, i = 3, type = "div", tab = "GWR")
-p4 <- ggplot.fun(data.i = gwr.m$SDF, i = 4, type = "div", tab = "GWR")    
-p5 <- ggplot.fun(data.i = gwr.m$SDF, i = 5, type = "div", tab = "GWR")    
+p1 <- ggplot.fun(data.i = grd_10k, var = "Int", type = "pos", tab = "GWR")
+p2 <- ggplot.fun(data.i = grd_10k, var = "Abs", type = "div", tab = "GWR")
+p3 <- ggplot.fun(data.i = grd_10k, var = "Nat", type = "div", tab = "GWR")
+p4 <- ggplot.fun(data.i = grd_10k, var = "Rem", type = "div", tab = "GWR")    
+p5 <- ggplot.fun(data.i = grd_10k, var = "Rug", type = "div", tab = "GWR")    
+
+p6 <- ggplot.fun(data.i = grd_10k, var = "Int", type = "pos", tab = "MGWR")
+p7 <- ggplot.fun(data.i = grd_10k, var = "Abs", type = "div", tab = "MGWR")
+p8 <- ggplot.fun(data.i = grd_10k, var = "Nat", type = "pos", tab = "MGWR")
+p9 <- ggplot.fun(data.i = grd_10k, var = "Rem", type = "pos", tab = "MGWR")    
+p10 <- ggplot.fun(data.i = grd_10k, var = "Rug", type = "div", tab = "MGWR")    
 
 ## multiplot function
 multiplot <- function(plot.list, file, cols=3, layout=NULL) {
@@ -594,13 +680,21 @@ multiplot <- function(plot.list, file, cols=3, layout=NULL) {
 }
 
 ## map together
-setwd("/Users/Yi-Min/Rsession/ScenicOrNot/MGWRonScenicness")
-png(filename = "GWR_MGWR_wilderness.png", w = 10*2, h = 6*2, units = "in", res = 300)
+# setwd("/Users/Yi-Min/Rsession/ScenicOrNot/MGWRonScenicness")
+# png(filename = "GWR_MGWR_wilderness.png", w = 10*2, h = 6*2, units = "in", res = 300)
 par(mar = c(0,0,0,0))
 multiplot(list(p1, p2, p3, p4, p5), cols = 5)
-dev.off()
+#dev.off()
 
- 
+par(mar = c(0,0,0,0))
+multiplot(list(p6, p7, p8, p9, p10), cols = 5)
+
+###### results of MGWR
+setwd("/Users/Yi-Min/Rsession/ScenicOrNot/scenicness/Grid")
+test <- read.csv("mgwr_tvals_20200102.csv")
+grd %>%
+  
+
 ####### End PART 4: Results - Tables and Figures #######   
 
 if (type == "div") {
