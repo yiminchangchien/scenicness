@@ -122,6 +122,80 @@ grid.sp@data[,c(1,2:5)] %>%
 
 # covariance
 ## get some plots out, gets some table etc
+grd <- st_read("sc_5k_bisquare.shp") %>% .[,c(5,1:4)]
+grd$Abs <- scale(grd$Abs)
+grd$Nat <- scale(grd$Nat)
+grd$Rem <- scale(grd$Rem)
+grd$Rug <- scale(grd$Rug)
+summary(grd)
+corr.m <- grd %>% st_drop_geometry() %>% cor()
+corr.k <- grd %>% st_drop_geometry() %>% cor(., method = "kendall", use = "pairwise")
+
+# Pair-wise correlation, scatter plot and distribution 
+my_custom_smooth <- function(data, mapping, ...) {
+  ggplot(data = data, mapping = mapping) +
+    geom_point(color = I("blue"), alpha = 0.3, cex = 0.1) + 
+    geom_smooth(method = "lm", lwd = 0.5, color = I("red3"), ...)
+}
+
+# for upper panel plot
+my_custom_cor <- function(data, mapping, color = I("black"), sizeRange = c(1.5, 3), ...) {
+  # get the x and y data to use the other code
+  x <- eval_data_col(data, mapping$x)
+  y <- eval_data_col(data, mapping$y)
+  ct <- cor.test(x,y, method = "pearson")
+  sig <- symnum(
+    ct$p.value, corr = FALSE, na = FALSE,
+    cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+    symbols = c("***", "**", "*", ".", " "))
+  r <- unname(ct$estimate)
+  rt <- format(r, digits=2)[1]
+  # since we can't print it to get the strsize, just use the max size range
+  cex <- max(sizeRange)
+  # helper function to calculate a useable size
+  percent_of_range <- function(percent, range) {
+    percent * diff(range) + min(range, na.rm = TRUE)}
+  
+  # plot the cor value
+  ggally_text(
+    label = as.character(rt), 
+    mapping = aes(),
+    xP = 0.5, yP = 0.5, 
+    size = I(percent_of_range(cex * abs(r), sizeRange)),
+    color = color,
+    ...) + 
+    # add the sig stars
+    geom_text(
+      aes_string(
+        x = 0.8,
+        y = 0.8),
+      label = sig, 
+      size = I(cex),
+      color = color,
+      ...) + 
+    # remove all the background stuff and wrap it with a dashed line
+    theme_classic() + 
+    theme(
+      panel.background = element_rect(
+        color = "grey50", 
+        linetype = "longdash"), 
+      axis.line = element_blank(), 
+      axis.ticks = element_blank(), 
+      axis.text.y = element_blank(), 
+      axis.text.x = element_blank())
+}
+
+#setwd("/Users/Yi-Min/Python/MGWR/")
+#png(filename = "SpearmanCorrelation_sqrt.png", w = 24/3, h = 24/3, units = "in", res = 300)
+grd %>% 
+  st_drop_geometry() %>%
+  ggpairs(aes(alpha = 0.4),
+          upper = list(continuous = my_custom_smooth),
+          lower = list(continuous = my_custom_cor)) +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+#dev.off()
 
 ####### END PART 2: initial analysis
 
@@ -131,16 +205,17 @@ grid.sp@data[,c(1,2:5)] %>%
 # is to better understand relationship heterogentity
 # between scenicness and other variables
 # That is how these vary spatially / locally
-
 reg.mod <- as.formula(Sce ~ scale(Abs) + scale(Nat) + scale(Rem) + scale(Rug))
 reg.mod <- as.formula(Sce ~ scale(Abs) + scale(Nat) + scale(Rug))
-
+reg.mod <- as.formula(Sce ~ scale(Nat) + scale(Rem) + scale(Rug))
+reg.mod <- as.formula(Sce ~ Nat + Rem + Rug)
+bc <- boxcox(Sce ~ Rem + Rug, data = st_drop_geometry(grd))
 # 3.1. Linear Regression
 ols.m <- 
-  grid.sp %>% 
+  grdid.sp %>% 
   sp.na.omit(margin = 1) %>%
   lm(reg.mod, data = .)
-
+ols.m <- lm(reg.mod, data = st_drop_geometry(grd))
 summary(ols.m)
 round(coef(summary(ols.m)), 3)
 
@@ -149,7 +224,11 @@ summary(stepAIC(ols.m, trace = 0))
 round(coef(summary(stepAIC(ols.m, trace = 0))), 3)
 reg.mod2 <- as.formula(summary(stepAIC(ols.m, trace = 0))[1])
 
-###### 3.1.2. examine and visualise the outliers of the global model
+###### 3.1.2. examine the variance inflation factor (VIF)
+require(faraway)
+vif(ols.m)
+
+###### 3.1.3. examine and visualise the outliers of the global model
 s.resids = rstandard(ols.m) # to compute some of the regression (leave-one-out deletion) diagnostics for linear and generalized linear models discussed in Belsley, Kuh and Welsch (1980), Cook and Weisberg (1982)
 resid.shades = shading(c(-2,2),c("red","grey","blue")) # red: overestimation; blue: underestimation
 cols = resid.shades$cols[1 + findInterval(s.resids, resid.shades$breaks)]
@@ -158,16 +237,19 @@ abline(lm(reg.mod), col='red', lwd = 2, lty = 2)
 
 #png(filename = "f2.png", w = 5, h = 5, units = "in", res = 300)
 #par(mar=c(0,0,0,0)) 
-grid.sp %>% 
-  sp.na.omit(margin = 1) %>%
+#grid.sp %>% 
+#  sp.na.omit(margin = 1) %>%
+grd %>%
+  as("Spatial") %>%
   choropleth(s.resids, shading = resid.shades)
 choro.legend(400000, 300000, resid.shades, fmt="%4.1g", cex = 0.5, title = 'Residuals Map')
 
-grid.sp %>% 
-  sp.na.omit(margin = 1) %>%
-  st_as_sf() %>%
-  mutate(Residuals = ols.m$residuals) %>%
-  select(Residuals) ->
+#grid.sp %>% 
+#  sp.na.omit(margin = 1) %>%
+#  st_as_sf() %>%
+grd %>%
+  mutate(Residuals = rstandard(ols.m)) %>%
+  dplyr::select(Residuals) ->
   hex.res
 
   ggplot(data = hex.res) +
@@ -202,7 +284,10 @@ hex.res %>%
 outlier_under <- which(rstandard(ols.m) > 2) 
  outlier_over <- which(rstandard(ols.m) < -2) 
 
-###### 3.1.3. incorporate the Geograph metadata and images for the outliers
+###### 3.1.3. Moran's I test on the residuals of the linear regression
+
+  
+###### 3.1.4. incorporate the Geograph metadata and images for the outliers
 sc <-
    read_tsv("http://scenicornot.datasciencelab.co.uk/votes.tsv",
             col_types = cols("ID" = col_number(),
@@ -275,7 +360,7 @@ for (url in urls[,1]) {
 # spplot(sc[underestimate,'Average'], pch=19, cex=0.1,
 #       sp.layout = list(underestimate[, 'Sce'], zcol=c("Sce"), first = FALSE)) 
 
-###### 3.1.4. download the images of the outliers within the Lake District 
+###### 3.1.5. download the images of the outliers within the Lake District 
 temp <- tempfile()
 temp2 <- tempfile()
 download.file("https://inspire.nationalparks.uk/geoserver/ldnpa_inspire/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=ldnpa_inspire:LDNPA_Boundary&outputFormat=shape-zip", temp)
@@ -303,7 +388,7 @@ underestimation[np,] %>%
   unique()
 
 
-##### 3.1.5.
+##### 3.1.6.
 temp <- tempfile()
 temp2 <- tempfile()
 download.file("https://www.arcgis.com/sharing/rest/content/items/3ce248e9651f4dc094f84a4c5de18655/data", temp)
